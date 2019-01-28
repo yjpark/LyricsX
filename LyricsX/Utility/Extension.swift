@@ -33,6 +33,34 @@ extension MusicPlayerName {
         default: return nil
         }
     }
+    
+    var icon: NSImage {
+        switch self {
+        case .itunes:   return #imageLiteral(resourceName: "iTunes_icon")
+        case .spotify:  return #imageLiteral(resourceName: "spotify_icon")
+        case .vox:      return #imageLiteral(resourceName: "vox_icon")
+        case .audirvana: return #imageLiteral(resourceName: "audirvana_icon")
+        }
+    }
+}
+
+extension MusicTrack {
+    
+    var lyrics: String? {
+        guard let originalTrack = originalTrack,
+            originalTrack.responds(to: Selector(("lyrics"))) else {
+            return nil
+        }
+        return originalTrack.value(forKey: "lyrics") as? String
+    }
+    
+    func setLyrics(_ lyrics: String) {
+        guard let originalTrack = originalTrack,
+            originalTrack.responds(to: Selector(("setLyrics:"))) else {
+                return
+        }
+        originalTrack.setValue(lyrics, forKey: "lyrics")
+    }
 }
 
 extension NSFont {
@@ -155,25 +183,34 @@ extension Lyrics {
     }
 }
 
+private extension NSPredicate {
+    
+    static var lyricsPredicate: NSPredicate {
+        _ = NSPredicate.observer
+        return _lyricsPredicate
+    }
+    
+    private static var _lyricsPredicate: NSPredicate!
+    
+    private static let observer = defaults.observe(.LyricsFilterKeys, options: [.new, .initial]) { _, change in
+        let predicates = change.newValue.compactMap { (key: String) -> NSPredicate? in
+            let isRegex = key.hasPrefix("/")
+            let pattern = isRegex ? String(key.dropFirst()) : key
+            let options: NSRegularExpression.Options = isRegex ? [.ignoreMetacharacters] : []
+            guard let regex = try? Regex(pattern, options: options) else { return nil }
+            return NSPredicate { object, _ in
+                guard let object = object as? LyricsLine else { return false }
+                return !regex.isMatch(object.content)
+            }
+        }
+        _lyricsPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+    }
+}
+
 extension Lyrics {
     
     func filtrate() {
-        let predicates = defaults[.LyricsFilterKeys].compactMap { (key: String) -> NSPredicate? in
-            if key.hasPrefix("/") {
-                guard let regex = try? Regex(String(key.dropFirst())) else { return nil }
-                return NSPredicate { object, _ in
-                    guard let object = object as? LyricsLine else { return false }
-                    return !regex.isMatch(object.content)
-                }
-            } else {
-                return NSPredicate { object, _ in
-                    guard let object = object as? LyricsLine else { return false }
-                    return !object.content.contains(key)
-                }
-            }
-        }
-        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
-        filtrate(isIncluded: predicate)
+        filtrate(isIncluded: NSPredicate.lyricsPredicate)
     }
 }
 
@@ -185,5 +222,16 @@ extension Lyrics {
     
     var adjustedTimeDelay: TimeInterval {
         return TimeInterval(adjustedOffset) / 1000
+    }
+}
+
+extension NSImage {
+    
+    func scaled(to size: NSSize) -> NSImage {
+        return NSImage(size: size, flipped: false) { rect in
+            let srcRect = NSRect(origin: .zero, size: self.size)
+            self.draw(in: rect, from: srcRect, operation: .copy, fraction: 1)
+            return true
+        }
     }
 }

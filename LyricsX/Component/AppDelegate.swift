@@ -24,9 +24,10 @@ import Fabric
 import GenericID
 import MASShortcut
 import MusicPlayer
+import Sparkle
 
 @NSApplicationMain
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSTouchBarProvider {
     
     static var shared: AppDelegate? {
         return NSApplication.shared.delegate as? AppDelegate
@@ -39,6 +40,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var desktopLyrics: KaraokeLyricsWindowController?
     
     var touchBarLyrics: Any?
+    
+    @available(OSX 10.12.2, *)
+    var touchBar: NSTouchBar? {
+        return (self.touchBarLyrics as! TouchBarLyrics?)?.touchBar
+    }
     
     lazy var searchLyricsWC: NSWindowController = {
         // swiftlint:disable:next force_cast
@@ -95,7 +101,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                 }
             }
-            checkForUpdate()
         #endif
     }
     
@@ -156,7 +161,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @IBAction func checkUpdateAction(_ sender: Any) {
-        checkForUpdate(force: true)
+        SUUpdater.shared()?.checkForUpdates(sender)
     }
     
     @IBAction func increaseOffset(_ sender: Any?) {
@@ -185,15 +190,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     @IBAction func searchLyrics(_ sender: Any?) {
         searchLyricsWC.window?.makeKeyAndOrderFront(nil)
+        (searchLyricsWC.contentViewController as! SearchLyricsViewController?)?.reloadKeyword()
         NSApp.activate(ignoringOtherApps: true)
     }
     
     @IBAction func wrongLyrics(_ sender: Any?) {
-        if let id = AppController.shared.playerManager.player?.currentTrack?.id {
-            defaults[.NoSearchingTrackIds].append(id)
+        guard let track = AppController.shared.playerManager.player?.currentTrack else {
+            return
         }
+        defaults[.NoSearchingTrackIds].append(track.id)
         if defaults[.WriteToiTunesAutomatically] {
-            (AppController.shared.playerManager.player as? iTunes)?.currentLyrics = ""
+            track.setLyrics("")
         }
         if let url = AppController.shared.currentLyrics?.metadata.localURL {
             try? FileManager.default.removeItem(at: url)
